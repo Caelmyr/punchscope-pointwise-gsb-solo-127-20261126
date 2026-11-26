@@ -9,7 +9,7 @@ from flask import Blueprint, jsonify, render_template, request, send_file, url_f
 from image_lab import create_app as preparation_app
 from image_lab.validation import Invalid, choice, integer, object_value
 
-from . import analysis, apertures, demo, exports, photo
+from . import analysis, apertures, demo, exports, photo, split
 from .store import Cards
 
 
@@ -49,7 +49,7 @@ def create_app(directory=None):
     @api.post("/practice")
     def practice():
         body = object_value(request.get_json(silent=True), "练习选项")
-        sample = choice(body.get("sample"), "练习类型", ("panel", "staggered", "slots", "glare"))
+        sample = choice(body.get("sample"), "练习类型", ("panel", "staggered", "slots", "glare", "bridge"))
         name, size, content, settings = demo.make(sample)
         return jsonify(cards.create(name, f"{sample}.png", size, content, settings, synthetic=True)), 201
 
@@ -80,6 +80,12 @@ def create_app(directory=None):
         x = integer(request.args.get("x"), "原片列 X", 0, image.shape[1] - 1)
         y = integer(request.args.get("y"), "原片行 Y", 0, image.shape[0] - 1)
         return jsonify(revision=card["revision"], **apertures.probe(image, card["settings"], openings, x, y))
+
+    @api.get("/cards/<key>/split-advice")
+    def split_advice(key):
+        card, image, openings = readings(key)
+        hole = integer(request.args.get("hole"), "孔件编号", 0)
+        return jsonify(revision=card["revision"], **split.advise(openings, card["settings"], hole))
 
     @api.get("/cards/<key>/overlay.png")
     def overlay(key):

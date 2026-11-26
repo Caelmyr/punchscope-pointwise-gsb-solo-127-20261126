@@ -6,7 +6,8 @@ const scalars = ["scan_y", "threshold", "min_area", "scale", "edge_margin"];
 const modes = ["probe", "box", "scan"];
 const downloadLinks = { csv: "section.csv", proof: "proof.png", crop: "crop.png", receipt: "receipt.zip" };
 const state = { card: null, image: null, overlay: null, report: null, probe: null,
-  mode: "probe", drag: null, preview: null, busy: false };
+  mode: "probe", drag: null, preview: null, busy: false, advice: null };
+const verdictText = { split: "建议分开", uncertain: "拿不准", keep: "建议保留一体" };
 
 async function request(path, options) {
   const response = await fetch(`/punchscope/${path}`, options);
@@ -100,6 +101,22 @@ function drawEdges(context, points) {
   }
 }
 
+function drawPixels(context, pixels, color) {
+  context.fillStyle = color;
+  for (const [x, y] of pixels) context.fillRect(x, y, 1, 1);
+}
+
+function drawSeed(context, x, y, color) {
+  context.strokeStyle = color;
+  context.lineWidth = Math.max(1.5, context.lineWidth);
+  context.beginPath();
+  context.moveTo(x - 5, y);
+  context.lineTo(x + 5, y);
+  context.moveTo(x, y - 5);
+  context.lineTo(x, y + 5);
+  context.stroke();
+}
+
 function paint() {
   if (!state.image) return;
   const photo = $("photo");
@@ -144,6 +161,18 @@ function paint() {
     context.moveTo(x, y - 8);
     context.lineTo(x, y + 8);
     context.stroke();
+  }
+  for (const split of state.report?.splits || []) {
+    drawPixels(context, split.unsure, "rgba(197, 148, 250, .45)");
+    drawPixels(context, split.boundary, "#b49bf8");
+    for (const [x, y] of split.seeds) drawSeed(context, x, y, "#b49bf8");
+  }
+  if (state.advice) {
+    const { verdict } = state.advice;
+    const lineColor = { split: "#7ef0ff", uncertain: "#f2d38a", keep: "#93a795" }[verdict];
+    drawPixels(context, state.advice.unsure, "rgba(197, 148, 250, .5)");
+    drawPixels(context, state.advice.boundary, lineColor);
+    for (const seed of state.advice.seeds) drawSeed(context, seed.x, seed.y, lineColor);
   }
 }
 
@@ -196,7 +225,7 @@ function tableBody(id, rows) {
   if (!rows.length) {
     const tr = document.createElement("tr");
     const td = document.createElement("td");
-    td.colSpan = 4;
+    td.colSpan = $(id).closest("table").querySelectorAll("th").length || 1;
     td.textContent = "当前无测量结果";
     tr.append(td);
     fragment.append(tr);
@@ -213,6 +242,87 @@ function holeButton(hole) {
   return button;
 }
 
+function splitButton(hole) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = "分孔";
+  button.addEventListener("click", () => advise(hole.id));
+  return button;
+}
+
+function advise(holeId) {
+  return run(async () => {
+    const advice = await request(`${cardPath("split-advice")}?hole=${holeId}`);
+    if (advice.revision !== state.card.revision) throw new Error("检查卡已经更新，请重新打开");
+    state.advice = advice;
+    renderAdvice();
+    paint();
+    notice(advice.message);
+  });
+}
+
+function updateSplitPanel() {
+  $("split-panel").hidden = $("split-proposal").hidden && $("split-applied").hidden;
+}
+
+function renderAdvice() {
+  const advice = state.advice;
+  $("split-proposal").hidden = !advice;
+  if (advice) {
+    $("split-verdict").textContent = verdictText[advice.verdict] || "";
+    $("split-verdict").dataset.verdict = advice.verdict;
+    $("split-summary").textContent = `孔 ${advice.hole} · ${advice.message}`;
+    const items = advice.evidence.flatMap((item) => item.lines.map((line) => {
+      const li = document.createElement("li");
+      li.dataset.supports = String(line.supports);
+      li.textContent = `${line.label}：${line.detail}`;
+      return li;
+    }));
+    if (!items.length) {
+      const li = document.createElement("li");
+      li.dataset.supports = "false";
+      li.textContent = "未找到第二条候选分界。";
+      items.push(li);
+    }
+    $("split-evidence").replaceChildren(...items);
+    $("split-adopt").disabled = advice.seeds.length < 2;
+  }
+  updateSplitPanel();
+}
+
+function renderSplits() {
+  const splits = state.report?.splits || [];
+  $("split-applied").hidden = splits.length === 0;
+  const items = splits.map((split) => {
+    const li = document.createElement("li");
+    const label = document.createElement("span");
+    const seeds = split.seeds.map(([x, y]) => `(${x}, ${y})`).join(" · ");
+    label.textContent = `种子 ${seeds} · 桥区 ${split.unsure.length} px`;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = "撤销";
+    button.addEventListener("click", () => saveSplits(
+      state.card.settings.splits.filter((_, i) => i !== split.index),
+      "已撤销该分孔，孔件按连通域重新合并。"));
+    li.append(label, button);
+    return li;
+  });
+  $("split-list").replaceChildren(...items);
+  updateSplitPanel();
+}
+
+function saveSplits(splits, message) {
+  return run(async () => {
+    const next = await request(cardPath(), send("PATCH", { revision: state.card.revision, splits }));
+    state.card = next;
+    state.advice = null;
+    renderAdvice();
+    writeInputs();
+    await loadMeasurements();
+    notice(message);
+  });
+}
+
 function renderReport() {
   const { area, section, edges: borders, holes } = state.report;
   $("open-rate").textContent = `${(area.fraction * 100).toFixed(2)}%`;
@@ -226,9 +336,11 @@ function renderReport() {
   $("line-detail").textContent = section.points.length ? `原片行 Y=${section.row} · 亮度 0–255` : "截线在量区外";
   tableBody("holes", holes.map((hole) => [
     holeButton(hole), `${hole.center.x}, ${hole.center.y}`, hole.area, hole.gauge?.diameter ?? "贴边",
+    splitButton(hole),
   ]));
   tableBody("gaps", section.gaps.map((gap) => [gap.from, gap.to, gap.pitch]));
   drawProfile(section);
+  renderSplits();
 }
 
 async function loadMeasurements() {
@@ -251,6 +363,8 @@ async function openCard(card) {
   state.preview = null;
   state.report = null;
   state.overlay = null;
+  state.advice = null;
+  renderAdvice();
   const photo = $("photo");
   [photo.width, photo.height] = card.size;
   writeInputs();
@@ -357,6 +471,8 @@ $("settings").addEventListener("submit", (event) => {
     const next = await request(cardPath(), send("PATCH", { revision: state.card.revision, ...inputSettings() }));
     state.card = next;
     state.probe = null;
+    state.advice = null;
+    renderAdvice();
     $("probe-result").textContent = "量区已更新，点击原片重新点读。";
     writeInputs();
     await loadMeasurements();
@@ -368,5 +484,17 @@ $("transfer").addEventListener("click", () => {
     const { url } = await request(cardPath("prepare"), { method: "POST" });
     window.location.assign(url);
   });
+});
+$("split-adopt").addEventListener("click", () => {
+  if (!state.advice || state.advice.seeds.length < 2) return;
+  const seeds = state.advice.seeds.map((seed) => [seed.x, seed.y]);
+  saveSplits([...(state.card.settings.splits || []), { seeds }],
+    "分孔已采用：截线宽度按各孔实际范围重算，桥区不计入任何一孔。");
+});
+$("split-dismiss").addEventListener("click", () => {
+  state.advice = null;
+  renderAdvice();
+  paint();
+  notice("已保留一体，未改动检查设置。");
 });
 listing().catch((error) => notice(error.message, true));

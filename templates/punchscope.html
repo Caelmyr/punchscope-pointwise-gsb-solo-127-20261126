@@ -17,7 +17,7 @@
       <div class="source-intro"><h1>冲孔板检查</h1><p>选一张背光原片，查看开口、截线和板边。</p></div>
       <div class="source-forms">
         <form id="upload"><label for="source">背光原片</label><input type="file" id="source" name="source" accept="image/*" required><button>导入原片</button></form>
-        <form id="practice"><label for="sample">合成练习</label><select id="sample"><option value="panel">整板</option><option value="staggered">缺孔与偏位</option><option value="slots">长孔</option><option value="glare">眩光</option></select><button>打开练习</button></form>
+        <form id="practice"><label for="sample">合成练习</label><select id="sample"><option value="panel">整板</option><option value="staggered">缺孔与偏位</option><option value="slots">长孔</option><option value="glare">眩光</option><option value="bridge">亮桥双孔</option></select><button>打开练习</button></form>
         <div class="open"><label for="cards">已有检查卡</label><select id="cards"><option value="">选择检查卡</option></select><button id="open">打开卡片</button></div>
       </div>
     </section>
@@ -67,6 +67,20 @@
         <div class="card metric"><span>截线开口段</span><strong id="run-count">—</strong><small id="run-detail"></small></div>
         <div class="card metric"><span>同列板高</span><strong id="edge-height">—</strong><small id="edge-detail"></small></div>
       </div>
+      <section class="card result split-desk" id="split-panel" hidden>
+        <div id="split-proposal" hidden>
+          <div class="card-title"><div><h2>分孔建议</h2><p id="split-summary"></p></div><span class="split-verdict" id="split-verdict"></span></div>
+          <ul class="split-evidence" id="split-evidence"></ul>
+          <div class="split-actions">
+            <button id="split-adopt" class="primary" type="button">采用分孔</button>
+            <button id="split-dismiss" type="button">保留一体</button>
+          </div>
+        </div>
+        <div id="split-applied" hidden>
+          <h3>已采用分孔</h3>
+          <ul class="split-applied-list" id="split-list"></ul>
+        </div>
+      </section>
       <div class="results">
         <section class="card result">
           <div class="card-title"><div><h2>截线灰度与节距</h2><p id="line-detail"></p></div></div>
@@ -74,8 +88,8 @@
           <div class="scroll"><table><thead><tr><th>前孔 X</th><th>后孔 X</th><th>间距 mm</th></tr></thead><tbody id="gaps"></tbody></table></div>
         </section>
         <section class="card result">
-          <div class="card-title"><div><h2>孔件与圆规</h2><p>点击孔件编号回看原片。贴边孔件仍显示面积。</p></div></div>
-          <div class="scroll hole-table"><table><thead><tr><th>孔件</th><th>中心 (X, Y)</th><th>面积 px²</th><th>内接直径 mm</th></tr></thead><tbody id="holes"></tbody></table></div>
+          <div class="card-title"><div><h2>孔件与圆规</h2><p>点击孔件编号回看原片，点「分孔」查看分孔建议。贴边孔件仍显示面积。</p></div></div>
+          <div class="scroll hole-table"><table><thead><tr><th>孔件</th><th>中心 (X, Y)</th><th>面积 px²</th><th>内接直径 mm</th><th>分孔</th></tr></thead><tbody id="holes"></tbody></table></div>
         </section>
       </div>
     </section>

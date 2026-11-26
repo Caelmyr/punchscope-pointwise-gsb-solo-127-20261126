@@ -80,6 +80,23 @@ button.primary:hover:not(:disabled) { background: #e2f8aa; }
 #profile { background: #131b15; margin-bottom: 10px; }
 .scroll { max-height: 160px; overflow: auto; }
 .hole-table { max-height: 350px; }
+.split-desk { margin-top: 14px; padding: 15px; }
+.split-verdict { font-size: 13px; font-weight: 680; white-space: nowrap; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); }
+.split-verdict[data-verdict=split] { color: #7ef0ff; border-color: #2e5f66; }
+.split-verdict[data-verdict=uncertain] { color: #f2d38a; border-color: #6b5a2e; }
+.split-verdict[data-verdict=keep] { color: #a9baa8; }
+.split-evidence { margin: 4px 0 10px; padding-left: 20px; font-size: 13px; }
+.split-evidence li { margin: 3px 0; color: var(--muted); }
+.split-evidence li[data-supports=true] { color: #c9e7d9; }
+.split-evidence li[data-supports=true]::marker { color: #61daba; }
+.split-evidence li[data-supports=false]::marker { color: #6c7a6d; }
+.split-actions { display: flex; gap: 8px; }
+.split-actions .primary { width: auto; }
+#split-applied { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
+#split-applied h3 { font-size: 13px; margin-bottom: 6px; }
+.split-applied-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 5px; font-size: 12px; }
+.split-applied-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--muted); }
+.split-applied-list button { min-height: 26px; padding: 1px 8px; font-size: 12px; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
 th, td { text-align: left; padding: 6px; border-bottom: 1px solid var(--line); }
 th { position: sticky; top: 0; background: #1c291f; color: var(--muted); }

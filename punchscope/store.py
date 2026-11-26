@@ -10,17 +10,37 @@ import re
 
 from werkzeug.exceptions import NotFound
 
-from image_lab.validation import Conflict, Invalid, integer, number
+from image_lab.validation import Conflict, Invalid, integer, list_value, number, object_value
 
 KEY = re.compile(r"[0-9a-f]{20}\Z")
 BOX = ("left", "top", "right", "bottom")
-FIELDS = ("box", "scan_y", "threshold", "min_area", "scale", "edge_margin")
+FIELDS = ("box", "scan_y", "threshold", "min_area", "scale", "edge_margin", "splits")
 
 
 def atomic_json(path, value):
     draft = path.with_suffix(".tmp")
     draft.write_text(json.dumps(value, ensure_ascii=False, allow_nan=False), encoding="utf-8")
     draft.replace(path)
+
+
+def normalized_splits(value, size):
+    width, height = size
+    items = list_value(value, "分孔记录", 60)
+    splits = []
+    for item in items:
+        item = object_value(item, "分孔记录")
+        seeds = list_value(item.get("seeds"), "分孔种子", 8)
+        if len(seeds) < 2:
+            raise Invalid("分孔至少需要两个种子点")
+        points = []
+        for seed in seeds:
+            pair = list_value(seed, "分孔种子", 2)
+            if len(pair) != 2:
+                raise Invalid("分孔种子需要 X、Y 两个坐标")
+            points.append([integer(pair[0], "分孔列 X", 0, width - 1),
+                           integer(pair[1], "分孔行 Y", 0, height - 1)])
+        splits.append({"seeds": points})
+    return splits
 
 
 def normalized_settings(settings, size):
@@ -42,6 +62,7 @@ def normalized_settings(settings, size):
         "min_area": integer(settings.get("min_area", 18), "最小孔面积", 1, width * height),
         "scale": number(settings.get("scale", 1), "像素/毫米", 0.0001, 100000),
         "edge_margin": integer(settings.get("edge_margin", min(80, height)), "板边搜寻宽度", 1, height),
+        "splits": normalized_splits(settings.get("splits", []), size),
     }
 
 
