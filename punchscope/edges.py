@@ -16,7 +16,11 @@ def topmost(dark, stable=5):
     return np.where(has_transition, first, -1)
 
 
-def measure(image, settings):
+def bands(image, settings):
+    """Row of the first sheet edge found above and below the box, per column.
+
+    Columns without a witnessed edge report -1.  Coordinates stay native.
+    """
     box = settings["box"]
     left, right = box["left"], box["right"]
     gray = source_gray(image[:, left:right])
@@ -28,10 +32,16 @@ def measure(image, settings):
     bottom_end = min(height, box["bottom"] + depth)
     top = topmost(gray[top_start:top_end] < settings["threshold"])
     bottom = topmost(gray[bottom_start:bottom_end][::-1] < settings["threshold"])
+    top = np.where(top >= 0, top + top_start, -1)
+    bottom = np.where(bottom >= 0, bottom_end - 1 - bottom, -1)
+    return top, bottom
+
+
+def measure(top, bottom, settings):
+    left, right = settings["box"]["left"], settings["box"]["right"]
     scale = settings["scale"]
-    points = [{"x": x + left,
-               "top": int(top[x] + top_start) if top[x] >= 0 else None,
-               "bottom": int(bottom_end - 1 - bottom[x]) if bottom[x] >= 0 else None}
+    points = [{"x": x + left, "top": int(top[x]) if top[x] >= 0 else None,
+               "bottom": int(bottom[x]) if bottom[x] >= 0 else None}
               for x in range(right - left)]
 
     heights = [(p["bottom"] + 1 - p["top"]) / scale for p in points

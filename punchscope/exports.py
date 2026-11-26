@@ -5,6 +5,7 @@ import json
 from io import BytesIO, StringIO
 from zipfile import ZIP_DEFLATED, ZipFile
 
+import numpy as np
 from PIL import Image, ImageDraw
 
 from . import analysis, photo
@@ -20,7 +21,7 @@ def csv_bytes(report):
     return stream.getvalue().encode("utf-8")
 
 
-def report_image(image, settings, openings):
+def report_image(image, settings, openings, trim=None):
     source = Image.fromarray(image).convert("RGBA")
     source.alpha_composite(analysis.overlay(image, settings, openings))
     draw = ImageDraw.Draw(source)
@@ -29,12 +30,32 @@ def report_image(image, settings, openings):
                    outline=(22, 191, 182), width=2)
     row = settings["scan_y"]
     draw.line((box["left"], row, box["right"] - 1, row), fill=(253, 192, 83), width=1)
+    if trim is None:
+        trim = analysis.report(image, settings, openings)["trim"]
+    for key, color, width in (("proposal", (255, 249, 223), 1), ("adopted", (214, 238, 131), 2)):
+        line = trim[key]
+        if line:
+            draw.line((line["x0"], line["row"], line["x1"], line["row"]), fill=color, width=width)
     return photo.png(source.convert("RGB"))
 
 
-def crop(image, settings):
+def trim_alpha(line, settings, height):
+    """Alpha for the box view: keep the adopted strip below the line and between its ends."""
     box = settings["box"]
-    return photo.png(Image.fromarray(image[box["top"]:box["bottom"], box["left"]:box["right"]]))
+    rows, columns = np.indices((box["bottom"] - box["top"], box["right"] - box["left"]))
+    x, y = columns + box["left"], rows + box["top"]
+    on_row = 0 <= line["row"] < height and box["top"] <= line["row"] < box["bottom"]
+    good_columns = (x >= line["x0"]) & (x <= line["x1"])
+    return np.where(on_row & good_columns & (y >= line["row"]), 255, 0).astype(np.uint8)
+
+
+def crop(image, settings, line=None):
+    """Box-size native crop; with an adopted line, only its covered strip stays opaque."""
+    box = settings["box"]
+    view = Image.fromarray(image[box["top"]:box["bottom"], box["left"]:box["right"]]).convert("RGBA")
+    if line:
+        view.putalpha(Image.fromarray(trim_alpha(line, settings, image.shape[0])))
+    return photo.png(view)
 
 
 def receipt(card, image, openings):
@@ -44,6 +65,6 @@ def receipt(card, image, openings):
         archive.writestr("card.json", json.dumps(card, ensure_ascii=False, indent=2))
         archive.writestr("summary.json", json.dumps(report, ensure_ascii=False, indent=2))
         archive.writestr("cross-section.csv", csv_bytes(report))
-        archive.writestr("proof.png", report_image(image, card["settings"], openings))
-        archive.writestr("crop.png", crop(image, card["settings"]))
+        archive.writestr("proof.png", report_image(image, card["settings"], openings, report["trim"]))
+        archive.writestr("crop.png", crop(image, card["settings"], report["trim"]["adopted"]))
     return target.getvalue()

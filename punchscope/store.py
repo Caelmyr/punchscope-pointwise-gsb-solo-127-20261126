@@ -14,13 +14,26 @@ from image_lab.validation import Conflict, Invalid, integer, number
 
 KEY = re.compile(r"[0-9a-f]{20}\Z")
 BOX = ("left", "top", "right", "bottom")
-FIELDS = ("box", "scan_y", "threshold", "min_area", "scale", "edge_margin")
+FIELDS = ("box", "scan_y", "threshold", "min_area", "scale", "edge_margin", "trim")
 
 
 def atomic_json(path, value):
     draft = path.with_suffix(".tmp")
     draft.write_text(json.dumps(value, ensure_ascii=False, allow_nan=False), encoding="utf-8")
     draft.replace(path)
+
+
+def normalized_trim(value, size):
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise Invalid("请提供有效修边线")
+    width, height = size
+    x0 = integer(value.get("x0"), "修边线起点 X", 0, width - 1)
+    x1 = integer(value.get("x1"), "修边线终点 X", 0, width - 1)
+    if x0 > x1:
+        raise Invalid("修边线起点须在终点左侧")
+    return {"row": integer(value.get("row"), "修边线行 Y", 0, height - 1), "x0": x0, "x1": x1}
 
 
 def normalized_settings(settings, size):
@@ -42,6 +55,7 @@ def normalized_settings(settings, size):
         "min_area": integer(settings.get("min_area", 18), "最小孔面积", 1, width * height),
         "scale": number(settings.get("scale", 1), "像素/毫米", 0.0001, 100000),
         "edge_margin": integer(settings.get("edge_margin", min(80, height)), "板边搜寻宽度", 1, height),
+        "trim": normalized_trim(settings.get("trim"), size),
     }
 
 

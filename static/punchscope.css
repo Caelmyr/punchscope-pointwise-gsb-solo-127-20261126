@@ -67,6 +67,10 @@ fieldset label { display: grid; gap: 2px; }
 fieldset input { padding-inline: 5px; width: 100%; color: var(--text); min-height: 31px; }
 button.primary { width: 100%; background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 680; }
 button.primary:hover:not(:disabled) { background: #e2f8aa; }
+.trim-note { color: var(--muted); font-size: 12px; line-height: 1.5; min-height: 34px; }
+.trim-note[data-stale=true] { color: #ffae9e; }
+.trim-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 6px; }
+.trim-actions button { font-size: 12px; padding-inline: 6px; }
 .downloads { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .downloads h3 { grid-column: 1 / -1; font-size: 13px; }
 .downloads a, .downloads button { font-size: 12px; text-decoration: none; text-align: center; }

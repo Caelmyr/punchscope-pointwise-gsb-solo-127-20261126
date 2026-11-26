@@ -100,9 +100,10 @@ def create_app(directory=None):
 
     @api.get("/cards/<key>/crop.png")
     def crop_png(key):
-        card = cards.read(key)
-        image = photo.pixels(cards.source(key))
-        return download(exports.crop(image, card["settings"]), "image/png", "punchscope-crop.png")
+        card, image, openings = readings(key)
+        trim = analysis.report(image, card["settings"], openings)["trim"]
+        return download(exports.crop(image, card["settings"], trim["adopted"]), "image/png",
+                        "punchscope-crop.png")
 
     @api.get("/cards/<key>/receipt.zip")
     def receipt_zip(key):

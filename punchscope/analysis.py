@@ -3,15 +3,17 @@
 import numpy as np
 from PIL import Image
 
-from . import apertures, edges, section
+from . import apertures, edges, section, trim
 
 
 def report(image, settings, openings):
+    top, bottom = edges.bands(image, settings)
     return {
         "area": apertures.summary(openings),
         "holes": list(openings.by_id.values()),
         "section": section.scan(openings, settings),
-        "edges": edges.measure(image, settings),
+        "edges": edges.measure(top, bottom, settings),
+        "trim": trim.report(settings, openings, top, bottom),
     }
 
 

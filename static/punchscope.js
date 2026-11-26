@@ -82,7 +82,7 @@ function writeInputs() {
   $("revision").textContent = `已保存 · v${card.revision}`;
   $("source-meta").textContent = `${card.synthetic ? "合成练习" : card.source_name} · ${card.size.join(" × ")} px`;
   for (const [key, path] of Object.entries(downloadLinks)) {
-    $(`download-${key}`).href = `/punchscope/${cardPath(path)}`;
+    $(`download-${key}`).href = `/punchscope/${cardPath(path)}?revision=${card.revision}`;
   }
 }
 
@@ -97,6 +97,53 @@ function drawEdges(context, points) {
   for (const column of points) {
     if (column.top !== null) context.fillRect(column.x, column.top, 1, weight);
     if (column.bottom !== null) context.fillRect(column.x, column.bottom, 1, weight);
+  }
+}
+
+function drawTrim(context, trim) {
+  if (!trim) return;
+  const { proposal, adopted } = trim;
+  if (adopted) {
+    context.save();
+    context.fillStyle = "rgba(214, 238, 131, .16)";
+    context.fillRect(adopted.x0, adopted.row, adopted.x1 - adopted.x0 + 1,
+      state.card.settings.box.bottom - adopted.row);
+    context.strokeStyle = "#d6ee83";
+    context.lineWidth = Math.max(1.5, context.lineWidth);
+    context.beginPath();
+    context.moveTo(adopted.x0, adopted.row + .5);
+    context.lineTo(adopted.x1 + 1, adopted.row + .5);
+    context.stroke();
+    for (const x of [adopted.x0, adopted.x1 + 1]) {
+      context.beginPath();
+      context.moveTo(x, adopted.row - 5);
+      context.lineTo(x, adopted.row + 6);
+      context.strokeStyle = "#f3ffc4";
+      context.stroke();
+    }
+    context.restore();
+  }
+  if (proposal && (!adopted || adopted.row !== proposal.row || adopted.x0 !== proposal.x0 ||
+      adopted.x1 !== proposal.x1)) {
+    context.save();
+    context.setLineDash([7, 4]);
+    context.strokeStyle = "#fff9df";
+    context.lineWidth = Math.max(1, context.lineWidth);
+    context.beginPath();
+    context.moveTo(proposal.x0, proposal.row + .5);
+    context.lineTo(proposal.x1 + 1, proposal.row + .5);
+    context.stroke();
+    context.setLineDash([]);
+    for (const x of [proposal.x0, proposal.x1 + 1]) {
+      context.beginPath();
+      context.moveTo(x, proposal.row - 4);
+      context.lineTo(x, proposal.row + 5);
+      context.stroke();
+    }
+    context.beginPath();
+    context.arc(proposal.cut_x + .5, proposal.row + .5, 5, 0, Math.PI * 2);
+    context.stroke();
+    context.restore();
   }
 }
 
@@ -116,6 +163,7 @@ function paint() {
   context.moveTo(settings.box.left, settings.scan_y + .5);
   context.lineTo(settings.box.right, settings.scan_y + .5);
   context.stroke();
+  drawTrim(context, state.report?.trim);
   const draft = inputSettings();
   const candidate = state.preview || draft.box;
   if (candidate.right > candidate.left && candidate.bottom > candidate.top &&
@@ -213,6 +261,30 @@ function holeButton(hole) {
   return button;
 }
 
+function trimSentence(prefix, line) {
+  return [prefix, ` 左端 (${line.x0}, ${line.row})`, ` – 右端 (${line.x1}, ${line.row})`,
+    ` · 覆盖 ${line.columns} 列 / ${line.width_mm} mm`,
+    ` · 相对原上边最深切 ${line.cut} px / ${line.cut_mm} mm（X=${line.cut_x}）`];
+}
+
+function renderTrim(trim) {
+  const note = $("trim-summary");
+  const proposal = trim?.proposal;
+  const adopted = trim?.adopted;
+  note.dataset.stale = String(Boolean(trim?.stale));
+  if (adopted) {
+    note.replaceChildren(...trimSentence("已采用", adopted));
+  } else if (trim?.stale) {
+    note.textContent = "已采用的修边线在当前量区或阈值下不再全列有证，裁样暂按矩形输出。";
+  } else if (proposal) {
+    note.replaceChildren(...trimSentence("建议", proposal));
+  } else {
+    note.textContent = "当前量区没有连成一段的可用修边线。";
+  }
+  $("trim-adopt").disabled = !proposal;
+  $("trim-drop").disabled = !state.card.settings.trim;
+}
+
 function renderReport() {
   const { area, section, edges: borders, holes } = state.report;
   $("open-rate").textContent = `${(area.fraction * 100).toFixed(2)}%`;
@@ -224,6 +296,7 @@ function renderReport() {
   $("edge-height").textContent = borders.valid ? `${borders.minimum}–${borders.maximum} mm` : "—";
   $("edge-detail").textContent = `两侧有证 ${borders.valid} 列`;
   $("line-detail").textContent = section.points.length ? `原片行 Y=${section.row} · 亮度 0–255` : "截线在量区外";
+  renderTrim(state.report.trim);
   tableBody("holes", holes.map((hole) => [
     holeButton(hole), `${hole.center.x}, ${hole.center.y}`, hole.area, hole.gauge?.diameter ?? "贴边",
   ]));
@@ -363,6 +436,20 @@ $("settings").addEventListener("submit", (event) => {
     notice("检查设置与本次测量已经保存。");
   });
 });
+function adoptTrim(trim) {
+  return run(async () => {
+    const next = await request(cardPath(), send("PATCH", { revision: state.card.revision, trim }));
+    state.card = next;
+    writeInputs();
+    await loadMeasurements();
+    notice(trim ? "修边线已采用，量区裁样按这段线的下方出样。" : "修边线已移除，量区裁样恢复矩形。");
+  });
+}
+$("trim-adopt").addEventListener("click", () => {
+  const line = state.report?.trim?.proposal;
+  if (line) adoptTrim({ row: line.row, x0: line.x0, x1: line.x1 });
+});
+$("trim-drop").addEventListener("click", () => adoptTrim(null));
 $("transfer").addEventListener("click", () => {
   run(async () => {
     const { url } = await request(cardPath("prepare"), { method: "POST" });

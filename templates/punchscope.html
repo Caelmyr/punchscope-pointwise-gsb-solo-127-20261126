@@ -51,6 +51,13 @@
               <label>像素 / 毫米<input type="number" id="scale" min="0.0001" step="any" required></label>
               <label>搜边深度 px<input type="number" id="edge_margin" min="1" required></label>
             </div></fieldset>
+            <fieldset><legend>修边线 <span>原片像素</span></legend>
+              <p id="trim-summary" class="trim-note">尚未定位修边线</p>
+              <div class="trim-actions">
+                <button id="trim-adopt" type="button" disabled>采用建议修边线</button>
+                <button id="trim-drop" type="button" disabled>移除修边线</button>
+              </div>
+            </fieldset>
             <button class="primary" id="save">更新测量</button>
           </form>
           <div class="downloads">
