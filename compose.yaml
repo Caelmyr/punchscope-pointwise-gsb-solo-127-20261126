@@ -1,0 +1,16 @@
+name: solo130-punchscope
+services:
+  desk:
+    build:
+      context: .
+      args:
+        PUNCHSCOPE_DEPS_IMAGE: ${PUNCHSCOPE_DEPS_IMAGE:-python:3.11-slim}
+    image: ${PUNCHSCOPE_IMAGE:-solo130-punchscope:1.0}
+    network_mode: bridge
+    ports:
+      - "127.0.0.1:${PUNCHSCOPE_PORT:-19930}:8000"
+    volumes:
+      - measurements:/var/lib/punchscope
+    init: true
+volumes:
+  measurements:

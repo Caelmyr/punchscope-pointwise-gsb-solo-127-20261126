@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PunchScope · 冲孔板检查</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='punchscope.css') }}">
+  <script defer src="{{ url_for('static', filename='punchscope.js') }}"></script>
+</head>
+<body>
+  <header class="masthead">
+    <div class="identity"><span class="mark" aria-hidden="true"></span><div><strong>PunchScope</strong><span>冲孔板检查</span></div></div>
+    <a class="quiet-link" href="/prepare">图像准备工作台 <span aria-hidden="true">↗</span></a>
+  </header>
+  <main>
+    <section class="card source-desk">
+      <div class="source-intro"><h1>冲孔板检查</h1><p>选一张背光原片，查看开口、截线和板边。</p></div>
+      <div class="source-forms">
+        <form id="upload"><label for="source">背光原片</label><input type="file" id="source" name="source" accept="image/*" required><button>导入原片</button></form>
+        <form id="practice"><label for="sample">合成练习</label><select id="sample"><option value="panel">整板</option><option value="staggered">缺孔与偏位</option><option value="slots">长孔</option><option value="glare">眩光</option></select><button>打开练习</button></form>
+        <div class="open"><label for="cards">已有检查卡</label><select id="cards"><option value="">选择检查卡</option></select><button id="open">打开卡片</button></div>
+      </div>
+    </section>
+    <p id="notice" role="status" aria-live="polite"></p>
+    <section id="desk" hidden>
+      <div class="workbench">
+        <div class="card photo-card">
+          <div class="card-title"><div><small id="source-meta"></small><h2 id="card-name"></h2></div><label class="switch"><input id="show-map" type="checkbox" checked>开口图层</label></div>
+          <canvas id="photo" aria-label="背光原片，可点击点读或在框选模式拖动量区" tabindex="0"></canvas>
+          <div class="photo-actions">
+            <div role="group" aria-label="原片操作">
+              <button id="mode-probe" type="button" aria-pressed="true">点读原片</button><button id="mode-box" type="button" aria-pressed="false">框选量区</button><button id="mode-scan" type="button" aria-pressed="false">定位截线</button>
+            </div>
+            <div id="coordinates">移动指针读取原片坐标</div>
+          </div>
+          <p id="probe-result" class="reading" aria-live="polite">点击原片查看像素与所在孔件。</p>
+        </div>
+        <aside class="card settings">
+          <div class="card-title"><h2>检查设置</h2><span class="saved" id="revision"></span></div>
+          <form id="settings">
+            <fieldset><legend>量区 <span>原片像素</span></legend><div class="four">
+              <label>左<input type="number" id="left" min="0" required></label>
+              <label>上<input type="number" id="top" min="0" required></label>
+              <label>右<input type="number" id="right" min="1" required></label>
+              <label>下<input type="number" id="bottom" min="1" required></label>
+            </div></fieldset>
+            <fieldset><legend>测量</legend><div class="two">
+              <label>截线 Y<input type="number" id="scan_y" min="0" required></label>
+              <label>透光阈值<input type="number" id="threshold" min="1" max="254" required></label>
+              <label>最小孔面积 px²<input type="number" id="min_area" min="1" required></label>
+              <label>像素 / 毫米<input type="number" id="scale" min="0.0001" step="any" required></label>
+              <label>搜边深度 px<input type="number" id="edge_margin" min="1" required></label>
+            </div></fieldset>
+            <button class="primary" id="save">更新测量</button>
+          </form>
+          <div class="downloads">
+            <h3>保存本次证据</h3>
+            <a id="download-csv" download>截线 CSV</a><a id="download-proof" download>检查图 PNG</a>
+            <a id="download-crop" download>量区裁样 PNG</a><a id="download-receipt" download>检查包 ZIP</a>
+            <button id="transfer" type="button">原片送去准备</button>
+          </div>
+        </aside>
+      </div>
+      <div class="metrics">
+        <div class="card metric"><span>量区通光率</span><strong id="open-rate">—</strong><small id="raw-rate"></small></div>
+        <div class="card metric"><span>识别孔件</span><strong id="hole-count">—</strong><small id="hole-detail"></small></div>
+        <div class="card metric"><span>截线开口段</span><strong id="run-count">—</strong><small id="run-detail"></small></div>
+        <div class="card metric"><span>同列板高</span><strong id="edge-height">—</strong><small id="edge-detail"></small></div>
+      </div>
+      <div class="results">
+        <section class="card result">
+          <div class="card-title"><div><h2>截线灰度与节距</h2><p id="line-detail"></p></div></div>
+          <canvas id="profile" width="720" height="160" aria-label="灰度曲线，点击曲线读取原片该列"></canvas>
+          <div class="scroll"><table><thead><tr><th>前孔 X</th><th>后孔 X</th><th>间距 mm</th></tr></thead><tbody id="gaps"></tbody></table></div>
+        </section>
+        <section class="card result">
+          <div class="card-title"><div><h2>孔件与圆规</h2><p>点击孔件编号回看原片。贴边孔件仍显示面积。</p></div></div>
+          <div class="scroll hole-table"><table><thead><tr><th>孔件</th><th>中心 (X, Y)</th><th>面积 px²</th><th>内接直径 mm</th></tr></thead><tbody id="holes"></tbody></table></div>
+        </section>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
