@@ -6,7 +6,8 @@ const scalars = ["scan_y", "threshold", "min_area", "scale", "edge_margin"];
 const modes = ["probe", "box", "scan"];
 const downloadLinks = { csv: "section.csv", proof: "proof.png", crop: "crop.png", receipt: "receipt.zip" };
 const state = { card: null, image: null, overlay: null, report: null, probe: null,
-  mode: "probe", drag: null, preview: null, busy: false };
+  mode: "probe", drag: null, preview: null, busy: false,
+  gaugeHoleId: null, gauge: null, adopted: null, clearance: null, gaugeSeq: 0 };
 
 async function request(path, options) {
   const response = await fetch(`/punchscope/${path}`, options);
@@ -145,6 +146,97 @@ function paint() {
     context.lineTo(x, y + 8);
     context.stroke();
   }
+  if (state.gauge?.fits) drawGauge(context, state.gauge);
+  if (state.clearance?.inside) drawClearance(context, state.clearance);
+}
+
+function polygonPath(context, corners) {
+  context.beginPath();
+  corners.forEach((point, index) => {
+    if (index) context.lineTo(point.x, point.y);
+    else context.moveTo(point.x, point.y);
+  });
+  context.closePath();
+}
+
+function labelChip(context, x, y, text, color) {
+  context.font = `${Math.max(12, Math.round(context.canvas.width / 52))}px ui-monospace, monospace`;
+  const padding = 5;
+  const width = context.measureText(text).width + padding * 2;
+  const height = Math.max(18, Math.round(context.canvas.width / 46));
+  context.fillStyle = "rgba(13, 20, 15, .82)";
+  context.fillRect(x, y - height, width, height);
+  context.strokeStyle = color;
+  context.lineWidth = 1;
+  context.strokeRect(x + .5, y - height + .5, width - 1, height - 1);
+  context.fillStyle = color;
+  context.textBaseline = "middle";
+  context.fillText(text, x + padding, y - height / 2 + 1);
+  context.textBaseline = "alphabetic";
+  return { width, height };
+}
+
+function drawGauge(context, fit) {
+  const gauge = fit.gauge;
+  if (!gauge?.corners?.length) return;
+  const adopted = state.adopted?.hole === fit.hole;
+  const color = adopted ? "#6ef2cf" : "#d6ee83";
+  context.save();
+  polygonPath(context, gauge.corners);
+  context.fillStyle = adopted ? "rgba(110, 242, 207, .16)" : "rgba(214, 238, 131, .13)";
+  context.fill();
+  context.lineWidth = Math.max(1.6, context.canvas.width / 430);
+  context.strokeStyle = color;
+  if (!adopted) context.setLineDash([9, 5]);
+  context.stroke();
+  context.setLineDash([]);
+  // Centre line along the gauge length.
+  const [a, b, c] = gauge.corners;
+  const mid01 = { x: (gauge.corners[0].x + gauge.corners[1].x) / 2,
+                  y: (gauge.corners[0].y + gauge.corners[1].y) / 2 };
+  const mid23 = { x: (gauge.corners[2].x + gauge.corners[3].x) / 2,
+                  y: (gauge.corners[2].y + gauge.corners[3].y) / 2 };
+  context.strokeStyle = "rgba(255,255,255,.75)";
+  context.lineWidth = Math.max(1, context.canvas.width / 900);
+  context.setLineDash([4, 5]);
+  context.beginPath();
+  context.moveTo(mid01.x, mid01.y);
+  context.lineTo(mid23.x, mid23.y);
+  context.stroke();
+  context.setLineDash([]);
+  const minX = Math.min(...gauge.corners.map((p) => p.x));
+  const minY = Math.min(...gauge.corners.map((p) => p.y));
+  const text = `扁规 宽${gauge.width_mm}mm · 进深${gauge.depth_mm}mm`;
+  labelChip(context, minX, minY - 7, text, color);
+  context.restore();
+}
+
+function drawClearance(context, clearance) {
+  const { point, sides } = clearance;
+  context.save();
+  context.lineWidth = Math.max(1.6, context.canvas.width / 430);
+  context.strokeStyle = "#ff9d8a";
+  context.fillStyle = "#ff9d8a";
+  for (const side of sides) {
+    const end = side.wall || side.limit;
+    if (!end) continue;
+    context.beginPath();
+    context.moveTo(side.edge.x, side.edge.y);
+    context.lineTo(end.x, end.y);
+    context.stroke();
+    context.beginPath();
+    context.arc(end.x, end.y, Math.max(2.5, context.canvas.width / 260), 0, Math.PI * 2);
+    context.fill();
+    const text = `${side.label} ${side.gap_mm}mm`;
+    const offset = side.side === "minus" ? -8 : 16;
+    labelChip(context, end.x + 6, end.y + offset, text, "#ffc7bb");
+  }
+  context.strokeStyle = "#ffffff";
+  context.lineWidth = Math.max(1.2, context.canvas.width / 650);
+  context.beginPath();
+  context.arc(point.x, point.y, Math.max(3, context.canvas.width / 240), 0, Math.PI * 2);
+  context.stroke();
+  context.restore();
 }
 
 function drawProfile(section) {
@@ -179,6 +271,20 @@ function drawProfile(section) {
   context.textAlign = "right";
   context.fillText(section.points.at(-1).x, width - 18, height - 3);
   context.textAlign = "left";
+  if (state.clearance?.inside && Number.isFinite(state.clearance.x)) {
+    const index = state.clearance.x - section.points[0].x;
+    if (index >= 0 && index < section.points.length) {
+      const markerX = xAt(index);
+      context.strokeStyle = "#ff9d8a";
+      context.lineWidth = 2;
+      context.beginPath();
+      context.moveTo(markerX, 10);
+      context.lineTo(markerX, height - 16);
+      context.stroke();
+      context.fillStyle = "#ff9d8a";
+      context.fillText("规位", markerX + 4, 24);
+    }
+  }
 }
 
 function tableBody(id, rows) {
@@ -196,7 +302,7 @@ function tableBody(id, rows) {
   if (!rows.length) {
     const tr = document.createElement("tr");
     const td = document.createElement("td");
-    td.colSpan = 4;
+    td.colSpan = 5;
     td.textContent = "当前无测量结果";
     tr.append(td);
     fragment.append(tr);
@@ -213,6 +319,40 @@ function holeButton(hole) {
   return button;
 }
 
+function gaugePickButton(hole) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "gauge-pick";
+  button.dataset.gauge = String(hole.id);
+  button.dataset.testid = "select-gauge";
+  button.setAttribute("aria-label", `为孔 ${hole.id} 选扁规`);
+  button.textContent = "选扁规";
+  return button;
+}
+
+function renderHoleRows(holes) {
+  tableBody("holes", holes.map((hole) => [
+    holeButton(hole), `${hole.center.x}, ${hole.center.y}`, hole.area,
+    hole.gauge?.diameter ?? "贴边", gaugePickButton(hole),
+  ]));
+  const tbody = $("holes");
+  [...tbody.rows].forEach((tr, index) => {
+    const hole = holes[index];
+    if (!hole) return;
+    tr.dataset.hole = String(hole.id);
+    tr.tabIndex = 0;
+    tr.setAttribute("aria-selected", String(state.gaugeHoleId === hole.id));
+    if (state.gaugeHoleId === hole.id) tr.classList.add("selected");
+    tr.addEventListener("click", () => selectHole(hole.id));
+    tr.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        selectHole(hole.id);
+      }
+    });
+  });
+}
+
 function renderReport() {
   const { area, section, edges: borders, holes } = state.report;
   $("open-rate").textContent = `${(area.fraction * 100).toFixed(2)}%`;
@@ -224,11 +364,10 @@ function renderReport() {
   $("edge-height").textContent = borders.valid ? `${borders.minimum}–${borders.maximum} mm` : "—";
   $("edge-detail").textContent = `两侧有证 ${borders.valid} 列`;
   $("line-detail").textContent = section.points.length ? `原片行 Y=${section.row} · 亮度 0–255` : "截线在量区外";
-  tableBody("holes", holes.map((hole) => [
-    holeButton(hole), `${hole.center.x}, ${hole.center.y}`, hole.area, hole.gauge?.diameter ?? "贴边",
-  ]));
+  renderHoleRows(holes);
   tableBody("gaps", section.gaps.map((gap) => [gap.from, gap.to, gap.pitch]));
   drawProfile(section);
+  renderGaugePanel();
 }
 
 async function loadMeasurements() {
@@ -251,10 +390,20 @@ async function openCard(card) {
   state.preview = null;
   state.report = null;
   state.overlay = null;
+  state.gaugeHoleId = null;
+  state.gauge = null;
+  state.adopted = null;
+  state.clearance = null;
+  state.gaugeSeq += 1;
   const photo = $("photo");
   [photo.width, photo.height] = card.size;
   writeInputs();
   $("probe-result").textContent = "点击原片查看像素与所在孔件。";
+  $("clearance-result").textContent = "在孔件表里选孔并「采用扁规」后，在这里沿规的长度点一个位置，读短边方向两侧离原孔壁多远。";
+  $("clearance-result").dataset.inside = "false";
+  setGapMetrics(null);
+  $("profile").setAttribute("aria-armed", "false");
+  renderGaugePanel();
   $("desk").hidden = false;
   paint();
   await loadMeasurements();
@@ -272,6 +421,196 @@ function probe(x, y) {
     $("probe-result").textContent = text.join(" · ");
     paint();
   });
+}
+
+async function selectHole(holeId) {
+  if (!state.card) return;
+  const changed = state.gaugeHoleId !== holeId;
+  state.gaugeHoleId = holeId;
+  if (changed) {
+    state.adopted = null;
+    state.clearance = null;
+  }
+  document.querySelectorAll("#holes tr").forEach((tr) => {
+    const selected = Number(tr.dataset.hole) === holeId;
+    tr.classList.toggle("selected", selected);
+    tr.setAttribute("aria-selected", String(selected));
+  });
+  const seq = ++state.gaugeSeq;
+  $("gauge-adopt").disabled = true;
+  $("gauge-panel").dataset.state = "loading";
+  $("gauge-result").textContent = "正在拟合沿孔长放置的扁规…";
+  try {
+    const data = await request(cardPath(`gauge?hole=${holeId}`));
+    if (seq !== state.gaugeSeq) return;
+    if (data.revision !== state.card.revision) throw new Error("检查卡已经更新，请重新打开");
+    state.gauge = data;
+    setupWidthSlider(data);
+    renderGaugePanel();
+    paint();
+  } catch (error) {
+    if (seq !== state.gaugeSeq) return;
+    state.gauge = null;
+    renderGaugePanel(error.message);
+    paint();
+    notice(error.message, true);
+  }
+}
+
+function setupWidthSlider(data) {
+  const slider = $("gauge-width");
+  const widths = data.frontier.map((entry) => entry.width_px);
+  slider.disabled = !data.fits || widths.length === 0;
+  if (!data.fits) return;
+  slider.min = String(Math.min(...widths));
+  slider.max = String(Math.max(...widths));
+  slider.step = "1";
+  slider.value = String(data.gauge.width_px);
+}
+
+function setMetricHooks(panel, position, widthMm, depthMm, fits) {
+  if (panel) {
+    panel.dataset.fits = String(fits);
+    if (fits) panel.dataset.state = "ready";
+  }
+  const setText = (id, text) => { const node = $(id); if (node) node.textContent = text; };
+  setText("gauge-position", position);
+  setText("gauge-width-mm", widthMm);
+  setText("gauge-depth-mm", depthMm);
+}
+
+function renderGaugePanel(errorMessage) {
+  const result = $("gauge-result");
+  const adopt = $("gauge-adopt");
+  const slider = $("gauge-width");
+  const value = $("gauge-width-value");
+  const panel = $("gauge-panel");
+  const fit = state.gauge;
+  if (errorMessage) {
+    result.textContent = errorMessage;
+    adopt.disabled = true;
+    slider.disabled = true;
+    value.textContent = "不可用";
+    if (panel) panel.dataset.state = "error";
+    setMetricHooks(panel, "—", "—", "—", false);
+    if (panel) panel.dataset.state = "error";
+    return;
+  }
+  if (!state.gaugeHoleId || !fit) {
+    result.textContent = "在孔件表中点一行或「选扁规」，这里给出规的位置、宽度和进深。";
+    adopt.disabled = true;
+    slider.disabled = true;
+    value.textContent = "未选孔";
+    if (panel) panel.dataset.state = "idle";
+    setMetricHooks(panel, "—", "—", "—", false);
+    if (panel) panel.dataset.state = "idle";
+    return;
+  }
+  if (!fit.fits) {
+    result.textContent = fit.message || "这个孔件不能给出通过的扁规。";
+    adopt.disabled = true;
+    slider.disabled = true;
+    value.textContent = "不通过";
+    if (panel) panel.dataset.state = "rejected";
+    setMetricHooks(panel, "—", "—", "—", false);
+    if (panel) panel.dataset.state = "rejected";
+    return;
+  }
+  const g = fit.gauge;
+  result.textContent = `扁规 · 孔 ${fit.hole} · 位置 (${g.center.x}, ${g.center.y}) · 宽 ${g.width_px} px / ${g.width_mm} mm · 进深 ${g.depth_px} px / ${g.depth_mm} mm · 方向 ${fit.orientation.angle_deg}°`;
+  value.textContent = `${g.width_px} px · ${g.width_mm} mm`;
+  setMetricHooks(panel, `(${g.center.x}, ${g.center.y})`, `${g.width_mm} mm`,
+                  `${g.depth_mm} mm`, true);
+  panel.dataset.hole = String(fit.hole);
+  panel.dataset.widthPx = String(g.width_px);
+  panel.dataset.depthPx = String(g.depth_px);
+  adopt.disabled = false;
+  const armed = state.adopted?.hole === fit.hole;
+  adopt.setAttribute("aria-pressed", String(armed));
+  adopt.textContent = armed ? "已采用" : "采用";
+  $("profile").setAttribute("aria-armed", String(armed));
+}
+
+let widthTimer = null;
+$("gauge-width").addEventListener("input", () => {
+  const width = $("gauge-width").valueAsNumber;
+  $("gauge-width-value").textContent = `${width} px · 换算中…`;
+  clearTimeout(widthTimer);
+  widthTimer = setTimeout(() => changeGaugeWidth(width), 120);
+});
+
+async function changeGaugeWidth(widthPx) {
+  if (!state.gaugeHoleId) return;
+  const seq = ++state.gaugeSeq;
+  try {
+    const data = await request(cardPath(`gauge?hole=${state.gaugeHoleId}&width=${widthPx}`));
+    if (seq !== state.gaugeSeq) return;
+    if (data.revision !== state.card.revision) throw new Error("检查卡已经更新，请重新打开");
+    state.gauge = data;
+    if (state.adopted?.hole === data.hole) {
+      state.adopted.width_px = data.gauge.width_px;
+      state.clearance = null;
+      $("clearance-result").textContent = "宽度已调整，请再次在截线图上沿规长点选位置。";
+      if (state.report) drawProfile(state.report.section);
+    }
+    renderGaugePanel();
+    paint();
+  } catch (error) {
+    notice(error.message, true);
+  }
+}
+
+$("gauge-adopt").addEventListener("click", () => {
+  if (!state.gauge?.fits) return;
+  state.adopted = { hole: state.gauge.hole, width_px: state.gauge.gauge.width_px };
+  state.clearance = null;
+  setGapMetrics(null);
+  $("clearance-result").textContent =
+    `已采用孔 ${state.adopted.hole} 的扁规（宽 ${state.gauge.gauge.width_mm} mm）。在下方截线图上沿规的长度点一个位置，读短边方向两侧离原孔壁的距离。`;
+  renderGaugePanel();
+  if (state.report) drawProfile(state.report.section);
+  paint();
+});
+
+function setGapMetrics(data) {
+  const sides = data?.inside ? data.sides : null;
+  const a = sides?.[0];
+  const b = sides?.[1];
+  const labelA = $("gap-a-label");
+  const labelB = $("gap-b-label");
+  const valA = $("gap-a-mm");
+  const valB = $("gap-b-mm");
+  if (labelA) labelA.textContent = a ? `${a.label}间隙` : "短边一侧间隙";
+  if (labelB) labelB.textContent = b ? `${b.label}间隙` : "另一侧间隙";
+  if (valA) valA.textContent = a ? `${a.gap_mm} mm` : "—";
+  if (valB) valB.textContent = b ? `${b.gap_mm} mm` : "—";
+}
+
+async function readClearance(nativeX) {
+  const adopted = state.adopted;
+  if (!adopted) return;
+  const target = $("clearance-result");
+  target.textContent = "正在读取两侧离壁距离…";
+  try {
+    const query = `hole=${adopted.hole}&x=${nativeX}&width=${adopted.width_px}`;
+    const data = await request(cardPath(`gauge/clearance?${query}`));
+    if (data.revision !== state.card.revision) throw new Error("检查卡已经更新，请重新打开");
+    state.clearance = data;
+    target.dataset.inside = String(Boolean(data.inside));
+    if (data.inside) {
+      target.dataset.gapAMm = String(data.gaps_mm?.[0] ?? "");
+      target.dataset.gapBMm = String(data.gaps_mm?.[1] ?? "");
+      target.textContent = data.message;
+    } else {
+      target.textContent = data.message || "这个点不在扁规长度范围内。";
+    }
+    setGapMetrics(data);
+    paint();
+    if (state.report) drawProfile(state.report.section);
+  } catch (error) {
+    target.textContent = error.message;
+    notice(error.message, true);
+  }
 }
 
 function nativePoint(event) {
@@ -330,7 +669,10 @@ $("profile").addEventListener("click", (event) => {
   const box = $("profile").getBoundingClientRect();
   const viewportX = (event.clientX - box.left) * $("profile").width / box.width;
   const index = Math.round((viewportX - 33) * (section.points.length - 1) / ($("profile").width - 51));
-  if (index >= 0 && index < section.points.length) probe(section.points[index].x, section.row);
+  if (index < 0 || index >= section.points.length) return;
+  const nativeX = section.points[index].x;
+  probe(nativeX, section.row);
+  if (state.adopted) readClearance(nativeX);
 });
 $("upload").addEventListener("submit", (event) => {
   event.preventDefault();
@@ -357,9 +699,19 @@ $("settings").addEventListener("submit", (event) => {
     const next = await request(cardPath(), send("PATCH", { revision: state.card.revision, ...inputSettings() }));
     state.card = next;
     state.probe = null;
+    state.adopted = null;
+    state.clearance = null;
     $("probe-result").textContent = "量区已更新，点击原片重新点读。";
     writeInputs();
     await loadMeasurements();
+    if (state.gaugeHoleId && state.report.holes.some((hole) => hole.id === state.gaugeHoleId)) {
+      await selectHole(state.gaugeHoleId);
+    } else {
+      state.gaugeHoleId = null;
+      state.gauge = null;
+      renderGaugePanel();
+      paint();
+    }
     notice("检查设置与本次测量已经保存。");
   });
 });
@@ -369,4 +721,16 @@ $("transfer").addEventListener("click", () => {
     window.location.assign(url);
   });
 });
-listing().catch((error) => notice(error.message, true));
+async function boot() {
+  await listing();
+  const params = new URLSearchParams(window.location.search);
+  const linked = params.get("card") || params.get("id") || params.get("key");
+  if (linked && /^[0-9a-f]{20}$/.test(linked)) {
+    try {
+      await run(async () => openCard(await request(`cards/${linked}`)));
+    } catch (error) {
+      notice(error.message, true);
+    }
+  }
+}
+boot().catch((error) => notice(error.message, true));

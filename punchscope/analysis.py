@@ -3,13 +3,16 @@
 import numpy as np
 from PIL import Image
 
-from . import apertures, edges, section
+from . import apertures, edges, gauge, section
 
 
 def report(image, settings, openings):
+    holes = list(openings.by_id.values())
+    for hole in holes:
+        hole["flat_gauge"] = gauge.summary(openings, settings, hole)
     return {
         "area": apertures.summary(openings),
-        "holes": list(openings.by_id.values()),
+        "holes": holes,
         "section": section.scan(openings, settings),
         "edges": edges.measure(image, settings),
     }

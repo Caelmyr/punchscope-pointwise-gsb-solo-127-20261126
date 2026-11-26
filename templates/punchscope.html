@@ -70,12 +70,34 @@
       <div class="results">
         <section class="card result">
           <div class="card-title"><div><h2>截线灰度与节距</h2><p id="line-detail"></p></div></div>
-          <canvas id="profile" width="720" height="160" aria-label="灰度曲线，点击曲线读取原片该列"></canvas>
+          <canvas id="profile" width="720" height="160" aria-label="灰度曲线，点击曲线读取原片该列；采用扁规后沿规长点选读两侧离壁间隙"></canvas>
+          <p id="clearance-result" class="reading clearance" data-testid="clearance-result" data-inside="false" aria-live="polite">在孔件表里选孔并「采用扁规」后，在这里沿规的长度点一个位置，读短边方向两侧离原孔壁多远。</p>
+          <div class="gap-metrics" data-testid="gap-metrics">
+            <span id="gap-a-label">短边一侧间隙</span>
+            <strong id="gap-a-mm" data-testid="gap-a-mm">—</strong>
+            <span id="gap-b-label">另一侧间隙</span>
+            <strong id="gap-b-mm" data-testid="gap-b-mm">—</strong>
+          </div>
           <div class="scroll"><table><thead><tr><th>前孔 X</th><th>后孔 X</th><th>间距 mm</th></tr></thead><tbody id="gaps"></tbody></table></div>
         </section>
         <section class="card result">
-          <div class="card-title"><div><h2>孔件与圆规</h2><p>点击孔件编号回看原片。贴边孔件仍显示面积。</p></div></div>
-          <div class="scroll hole-table"><table><thead><tr><th>孔件</th><th>中心 (X, Y)</th><th>面积 px²</th><th>内接直径 mm</th></tr></thead><tbody id="holes"></tbody></table></div>
+          <div class="card-title"><div><h2>孔件与圆规</h2><p>点孔件编号回看原片；点行或「选扁规」拟合沿孔长放得进的直矩形。贴边孔件仍显示面积，但不能出完整扁规。</p></div></div>
+          <div id="gauge-panel" class="gauge-panel" data-testid="gauge-panel" data-fits="false" aria-live="polite">
+            <div class="gauge-controls">
+              <button id="gauge-adopt" type="button" class="primary" data-testid="gauge-adopt" title="采用当前扁规，随后可在截线图点选读间隙" disabled>采用</button>
+              <label class="gauge-slider">规宽 px
+                <input type="range" id="gauge-width" data-testid="gauge-width" min="1" max="21" value="19" step="1" disabled>
+              </label>
+              <output id="gauge-width-value" for="gauge-width" data-testid="gauge-width-value">未选孔</output>
+            </div>
+            <div class="gauge-metrics" aria-hidden="false">
+              <span>位置 <b id="gauge-position" data-testid="gauge-position">—</b></span>
+              <span>宽度 <b id="gauge-width-mm" data-testid="gauge-width-mm">—</b></span>
+              <span>进深 <b id="gauge-depth-mm" data-testid="gauge-depth-mm">—</b></span>
+            </div>
+            <p id="gauge-result" class="reading" data-testid="gauge-result">在孔件表中点一行或「选扁规」，这里给出规的位置、宽度和进深。</p>
+          </div>
+          <div class="scroll hole-table"><table><thead><tr><th>孔件</th><th>中心 (X, Y)</th><th>面积 px²</th><th>内接直径 mm</th><th>扁规</th></tr></thead><tbody id="holes"></tbody></table></div>
         </section>
       </div>
     </section>
